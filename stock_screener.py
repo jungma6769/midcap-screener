@@ -154,24 +154,37 @@ DEFAULT_VIX = 16.0               # fallback VIX level
 ERP = 0.045                      # equity risk premium, decimal (Damodaran-style estimate; set your own)
 G_MACRO = 0.02                   # macro growth floor, decimal
 
-# --- Formula 1 small-cap risk premium params ---
+# --- Formula 1: cost of equity ---
 LAMBDA_S = 0.03                  # max extra premium for very small caps
-TAU_S = 5.0                      # decay scale (in $B of market cap)
+TAU_S = 4.0                      # decay scale (in $B of market cap)
+M_SIZE_FLOOR = 4.0                # size-premium starts phasing in below this market cap ($B)
 
-# --- Formula 4 cross-sectional blend weights ---
+# --- Formula 4: cross-sectional blend weights ---
 W1 = 0.7                         # weight on ATSV z-score
 W2 = 0.3                         # weight on industry percentile rank
 
-# --- Formula 5 debt-decay params ---
-T_D = 4.0                        # years of FCF tolerated to cover net debt
+# --- Formula 5: debt-decay + VIX-relative risk ---
+TD = 4.0                         # years of FCF tolerated to cover net debt
+VIX_MEAN = 19.5                  # long-run average VIX, used to gauge "is VIX elevated right now"
+VIX_STD = 7.5                    # typical VIX swing size
+VIX_Z_CAP = 2.5                  # cap how much a VIX spike can tighten the liquidity gate
+GATE_SHARPNESS = 6.0             # how close final_score's smooth-min gate is to a true min()
 
-# --- Formula 6 (NEW) quality/size overlay ---
-# Tuned for a $6B goldilocks target -- a little under or over is fine, hence a fairly
-# wide sigma (0.8 in log-$B space keeps roughly $2.5B-$14B within reasonable reach).
-TARGET_MARKET_CAP_B = 6.0        # your stated sweet spot
-SIZE_SIGMA = 0.8                 # width of tolerance around the target, in log-$B space
-MAX_DEBT_TO_EQUITY = 0.8         # moderate: leverage above this starts getting penalized
-MIN_FCF_YIELD = 0.025            # moderate: FCF yield below 2.5% starts losing points
+# --- Formula 6: quality/size overlay ---
+# M_TARGET overridden to 6.0 to match your stated $6B goldilocks zone (the formula file's
+# own default was 3.0 -- flagging that in case it wasn't intentional).
+M_TARGET = 6.0
+SIGMA = 0.9                      # width of tolerance around M_TARGET, in log-$B space
+DTE_TARGET = 0.30                # "sweet spot" debt/equity -- not just a ceiling anymore
+DTE_SIGMA = 0.30                 # width of tolerance around DTE_TARGET
+MAX_DTE = 0.80                   # hard-ish ceiling: leverage above this gets penalized regardless
+MIN_CASH_CONVERSION = 0.15       # floor on F / softplus(O): how much operating income becomes real FCF
+CASH_CONVERSION_STEEPNESS = 8.0  # how sharply that floor bites
+
+# Kept for backwards compatibility with any old code/URLs still using the previous names.
+TARGET_MARKET_CAP_B = M_TARGET
+SIZE_SIGMA = SIGMA
+MAX_DEBT_TO_EQUITY = MAX_DTE
 
 # ============================================================
 # DATA FETCHING
@@ -231,7 +244,6 @@ def fetch_fundamentals(ticker, retries=2):
     fcf = g("freeCashflow")
     op_cf = g("operatingCashflow")
     revenue = g("totalRevenue")
-    ebit = g("ebitda")  # closest widely-available proxy
     revenue_growth = g("revenueGrowth", G_MACRO)
     op_margin = g("operatingMargins", 0.1)
     debt_to_equity = g("debtToEquity")  # Yahoo reports this as a percent (e.g. 45.2 => 0.452)
@@ -271,53 +283,132 @@ def fetch_fundamentals(ticker, retries=2):
 # FORMULAS
 # ============================================================
 
+def _sp(x):
+    if x > 0:
+        return x + math.log1p(math.exp(-x))
+    return math.log1p(math.exp(x))
+
+
 def softplus_leaky(x):
-    """ln(1+e^x) + 0.1*ln(1+e^-x) — smooth, always-positive normalizer used in G and Final Score."""
-    return math.log1p(math.exp(x)) + 0.1 * math.log1p(math.exp(-x))
+    """ln(1+e^x) + 0.1*ln(1+e^-x) — smooth, always-positive normalizer used in G and Final Score.
+    (Numerically stable version -- avoids overflow for large |x| that math.exp(x) alone would hit.)
+    """
+    return _sp(x) + 0.1 * _sp(-x)
 
 
-def formula1_cost_of_equity(rf, beta, erp, ev, m, vix, lambda_s=LAMBDA_S, tau_s=TAU_S):
-    vix_term = (1 - 1 / (1 + math.exp(ev / m))) * (beta * vix / 100.0)
-    size_term = lambda_s * (1 - math.exp(-max(0.0, (m - 5) / tau_s)))
-    return rf + beta * erp + vix_term + size_term
+def probit(p, eps=1e-4):
+    """Inverse standard normal CDF (Acklam's approximation). Turns a percentile rank
+    into a z-score so it combines cleanly with ATSV's z-score in factor_score."""
+    p = min(max(p, eps), 1 - eps)
+    a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+         1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
+    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+         6.680131188771972e+01, -1.328068155288572e+01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+         3.754408661907416e+00]
+    p_low, p_high = 0.02425, 1 - 0.02425
+    if p < p_low:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / \
+               ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+    elif p <= p_high:
+        q = p - 0.5
+        r = q*q
+        return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / \
+               (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
+    else:
+        q = math.sqrt(-2 * math.log(1 - p))
+        return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / \
+                ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+
+
+def smooth_min(values, k=GATE_SHARPNESS):
+    """Soft version of min() -- approaches true min() as k grows. Used in final_score
+    so the weakest of (liquidity, margin, debt) gates dominates without the gates
+    all multiplying together and compounding unrelated weaknesses."""
+    m = min(values)
+    return m - (1.0 / k) * math.log(sum(math.exp(-k * (v - m)) for v in values))
+
+
+def formula1_cost_of_equity(rf, beta, erp, ev, m, vix,
+                             lambda_s=LAMBDA_S, tau_s=TAU_S, m_size_floor=M_SIZE_FLOOR):
+    size_term = lambda_s * (1 - math.exp(-max(0.0, (m - m_size_floor) / tau_s)))
+    vol_term = (1 - 1 / (1 + math.exp(ev / m))) * (beta * vix / 100)
+    return rf + beta * erp + vol_term + size_term
 
 
 def formula2_growth_governor(g, r, g_macro, capex, depr, op_margin):
-    denom = softplus_leaky(op_margin)
-    reinvestment_growth = (capex - depr) / denom
-    return min(g, r - 0.01, max(g_macro, reinvestment_growth))
+    reinvest_rate = (capex - depr) / softplus_leaky(op_margin)
+    return min(g, r - 0.01, max(g_macro, reinvest_rate))
 
 
 def formula3_atsv(f, m, r, g):
-    yield_term = f / m
-    shape_term = math.tanh(f) * max(0.0, g) + 1 / (1 + math.exp(-f))
-    stability_term = 1 / math.sqrt((r - g) ** 2 + 0.0004)
-    return yield_term * shape_term * stability_term
+    """
+    Valuation signal: FCF yield (f/m) scaled by growth and discounted by distance
+    between growth and required return. f/m is used HERE as the valuation driver --
+    this is the only place f/m should appear (see formula6_overlay_score, which used
+    to duplicate this exact ratio -- see its docstring for the fix).
+    """
+    denom = math.sqrt((r - g) ** 2 + 0.0004)
+    return (f / m) * (math.tanh(f / m) * max(0.0, g) + 1 / (1 + math.exp(-f))) * (1 / denom)
 
 
-def formula4_factor_score(atsv_series, industry_percentile_rank, w1=W1, w2=W2):
-    median = np.median(atsv_series)
-    mad = np.median(np.abs(atsv_series - median)) or 1e-6
-    z_scores = w1 * ((atsv_series - median) / mad) + w2 * industry_percentile_rank
-    return np.clip(z_scores, -3.0, 3.0)
+def formula4_factor_score(atsv_val, atsv_universe, pr_industry, w1=W1, w2=W2):
+    med = np.median(atsv_universe)
+    mad = np.median(np.abs(np.array(atsv_universe) - med)) or 1e-6
+    z_atsv = (atsv_val - med) / (1.4826 * mad)  # 1.4826 makes MAD comparable to std-dev for normal data
+    z_industry = probit(pr_industry)
+    raw = w1 * z_atsv + w2 * z_industry
+    return max(-3.0, min(3.0, raw))
 
 
-def formula5_final_score(factor_score, cash, f, vix, op_margin, d_adj, t_d=T_D):
+def formula5_final_score(factor, cash, f, vix, op_margin, d_adj, t_d=TD):
+    vix_z = max(-VIX_Z_CAP, min(VIX_Z_CAP, (vix - VIX_MEAN) / VIX_STD))
+    risk_multiplier = 1.0 + 0.5 * max(0.0, vix_z)  # elevated VIX tightens the liquidity gate
+
     denom = softplus_leaky(op_margin)
-    liquidity_term = 1 / (1 + math.exp(-(cash / abs(f) * (10 / (vix / 100.0)))))
-    leverage_term = 1 / (1 + math.exp(2 * (f / denom + 0.5)))
+    liquidity_gate = 1 / (1 + math.exp(-((cash / abs(f)) / risk_multiplier - 1.5)))
+    margin_gate = 1 / (1 + math.exp(2 * (f / denom + 0.5)))
     debt_decay = math.exp(-max(0.0, (d_adj / denom) / t_d))
-    return factor_score * liquidity_term * leverage_term * debt_decay
+
+    gate = smooth_min([liquidity_gate, margin_gate, debt_decay])
+    return factor * gate
 
 
-def formula6_quality_size_overlay(market_cap_b, debt_to_equity, fcf_yield,
-                                   target=TARGET_MARKET_CAP_B, sigma=SIZE_SIGMA,
-                                   max_dte=MAX_DEBT_TO_EQUITY, min_fcf_yield=MIN_FCF_YIELD):
-    """NEW: explicit small/mid-cap + low-debt + high-FCF preference, 0-1 scale each, multiplied."""
-    size_score = math.exp(-((math.log(market_cap_b) - math.log(target)) ** 2) / (2 * sigma ** 2))
-    debt_score = 1 / (1 + math.exp(4 * (debt_to_equity - max_dte)))       # falls off above max_dte (softer slope = moderate)
-    fcf_score = 1 / (1 + math.exp(-5 * (fcf_yield - min_fcf_yield)))       # rises above min_fcf_yield (softer slope = moderate)
-    return size_score * debt_score * fcf_score, size_score, debt_score, fcf_score
+def formula6_overlay_score(m, d_e, op_margin, f,
+                            target=M_TARGET, sigma=SIGMA,
+                            dte_target=DTE_TARGET, dte_sigma=DTE_SIGMA, max_dte=MAX_DTE,
+                            min_cash_conversion=MIN_CASH_CONVERSION,
+                            steepness=CASH_CONVERSION_STEEPNESS):
+    """
+    FIX (collinearity): this gate used to reuse f/m (FCF yield) -- the exact same
+    ratio already driving formula3_atsv's magnitude. That meant a single number
+    (FCF yield) was influencing Factor AND Overlay through two different nonlinear
+    paths, silently correlating them and giving that one input more effective
+    weight than w1/w2 implied.
+
+    Replaced with cash-conversion ratio f/softplus(op_margin): what fraction of
+    operating income actually becomes free cash flow. This captures a DIFFERENT
+    thing (earnings quality -- how much profit is "real" cash, not accrual) rather
+    than re-measuring valuation cheapness. Market cap (m) no longer appears in this
+    gate at all beyond the explicit size_fit term below -- it's the only place m
+    drives the Overlay score.
+
+    Also adds a debt "sweet spot" (gaussian centered on dte_target) on top of the
+    previous hard ceiling (max_dte), so moderate, healthy leverage doesn't score
+    identically to zero debt.
+    """
+    size_fit = math.exp(-((math.log(m) - math.log(target)) ** 2) / (2 * sigma ** 2))
+    debt_sweet_spot = math.exp(-((d_e - dte_target) ** 2) / (2 * dte_sigma ** 2))
+    debt_ceiling = 1 / (1 + math.exp(4 * (d_e - max_dte)))
+
+    cash_conversion = f / softplus_leaky(op_margin)
+    quality_gate = 1 / (1 + math.exp(-steepness * (cash_conversion - min_cash_conversion)))
+
+    overlay = size_fit * debt_sweet_spot * debt_ceiling * quality_gate
+    return overlay, size_fit, debt_sweet_spot * debt_ceiling, quality_gate
 
 
 def combine_final_and_quality(final_score, quality_overlay):
@@ -342,6 +433,83 @@ def combine_final_and_quality(final_score, quality_overlay):
     if final_score >= 0:
         return final_score * quality_overlay
     return final_score * (2 - quality_overlay)
+
+
+# ============================================================
+# CALIBRATION FRAMEWORK
+# These turn W1/W2 and GATE_SHARPNESS from fixed guesses into values fitted on
+# real data. They require a historical panel:
+#   panel = [{"z_atsv": ..., "z_industry": ..., "fwd_return": ...}, ...]
+# where fwd_return is a stock's ACTUAL forward return (e.g. next-quarter total
+# return) observed AFTER the scoring date -- real market data you'd need to
+# supply; nothing here can fabricate it. Not wired into run_screen() yet --
+# call these manually once you have real panel data to fit against.
+# ============================================================
+
+def _ols_2var(x1, x2, y):
+    """Closed-form least squares: y ~ b0 + b1*x1 + b2*x2. No numpy needed."""
+    n = len(y)
+    mean_x1, mean_x2, mean_y = sum(x1)/n, sum(x2)/n, sum(y)/n
+    s11 = sum((a-mean_x1)**2 for a in x1)
+    s22 = sum((a-mean_x2)**2 for a in x2)
+    s12 = sum((x1[i]-mean_x1)*(x2[i]-mean_x2) for i in range(n))
+    s1y = sum((x1[i]-mean_x1)*(y[i]-mean_y) for i in range(n))
+    s2y = sum((x2[i]-mean_x2)*(y[i]-mean_y) for i in range(n))
+    det = s11*s22 - s12**2
+    if abs(det) < 1e-12:
+        return 0.5, 0.5  # degenerate/collinear inputs, fall back to equal weight
+    b1 = (s1y*s22 - s2y*s12) / det
+    b2 = (s2y*s11 - s1y*s12) / det
+    return b1, b2
+
+
+def calibrate_factor_weights(panel):
+    """Fits W1, W2 via OLS of forward return on [z_atsv, z_industry], normalized
+    so |W1|+|W2| == 1 (keeps Factor on the same -3..3 clip scale). Requires a
+    real historical panel -- see module docstring above."""
+    import statistics
+    z_atsv = [row["z_atsv"] for row in panel]
+    z_ind = [row["z_industry"] for row in panel]
+    fwd = [row["fwd_return"] for row in panel]
+    b1, b2 = _ols_2var(z_atsv, z_ind, fwd)
+    total = abs(b1) + abs(b2)
+    if total < 1e-9:
+        return W1, W2  # no signal found, keep defaults rather than divide by ~0
+    return b1/total, b2/total
+
+
+def _spearman_ic(scores, fwd_returns):
+    """Rank correlation between scores and forward returns (Information Coefficient)."""
+    n = len(scores)
+    rank_s = {v: r for r, v in enumerate(sorted(range(n), key=lambda i: scores[i]))}
+    rank_f = {v: r for r, v in enumerate(sorted(range(n), key=lambda i: fwd_returns[i]))}
+    rs = [rank_s[i] for i in range(n)]
+    rf = [rank_f[i] for i in range(n)]
+    mean_rs, mean_rf = sum(rs)/n, sum(rf)/n
+    cov = sum((rs[i]-mean_rs)*(rf[i]-mean_rf) for i in range(n))
+    std_s = math.sqrt(sum((r-mean_rs)**2 for r in rs))
+    std_f = math.sqrt(sum((r-mean_rf)**2 for r in rf))
+    if std_s < 1e-9 or std_f < 1e-9:
+        return 0.0
+    return cov / (std_s * std_f)
+
+
+def calibrate_gate_sharpness(panel_with_gates, fwd_returns, k_grid=None):
+    """
+    panel_with_gates: list of [liquidity_gate, margin_gate, debt_decay] triples
+    (pre-smooth_min, per stock-period), aligned with fwd_returns. Grid-searches k,
+    picks the k with the best Information Coefficient against REAL forward returns.
+    Requires real historical data.
+    """
+    if k_grid is None:
+        k_grid = [1, 2, 4, 6, 8, 12, 20, 40]
+    best_k, best_ic = GATE_SHARPNESS, -2.0
+    for k in k_grid:
+        proxy_scores = [smooth_min(gates, k=k) for gates in panel_with_gates]
+        ic = _spearman_ic(proxy_scores, fwd_returns)
+        if ic > best_ic:
+            best_ic, best_k = ic, k
+    return best_k, best_ic
 
 
 # ============================================================
@@ -409,11 +577,15 @@ def run_screen(tickers=TICKERS, max_workers=6):
 
     df = pd.DataFrame(rows)
 
-    # Formula 4 needs cross-sectional stats + an industry percentile rank
-    df["industry_pr"] = df.groupby("industry")["atsv"].rank(pct=True).fillna(0.5)
-    df["factor_score"] = formula4_factor_score(df["atsv"].values, df["industry_pr"].values)
+    # Formula 4 needs cross-sectional stats + an industry percentile rank.
+    # (formula4_factor_score is now per-row, not vectorized, so this loops via .apply)
+    df["pr_industry"] = df.groupby("industry")["atsv"].rank(pct=True).fillna(0.5)
+    atsv_universe = df["atsv"].tolist()
+    df["factor_score"] = df.apply(
+        lambda row: formula4_factor_score(row["atsv"], atsv_universe, row["pr_industry"]), axis=1
+    )
 
-    # Formula 5
+    # Formula 5 (smooth-min gate combiner + VIX-relative liquidity requirement)
     df["final_score"] = df.apply(
         lambda row: formula5_final_score(
             row["factor_score"], row["total_cash_b"], row["fcf_b"],
@@ -421,14 +593,16 @@ def run_screen(tickers=TICKERS, max_workers=6):
         ), axis=1
     )
 
-    # Formula 6 — the small/mid-cap, low-debt, high-FCF overlay
+    # Formula 6 -- quality/size overlay (debt sweet-spot + cash-conversion gate,
+    # no longer FCF-yield, to avoid double-counting with Formula 3's ATSV)
     overlay = df.apply(
-        lambda row: formula6_quality_size_overlay(
-            row["market_cap_b"], row["debt_to_equity"], row["fcf_yield"]
+        lambda row: formula6_overlay_score(
+            row["market_cap_b"], row["debt_to_equity"], row["op_margin"], row["fcf_b"]
         ), axis=1, result_type="expand"
     )
-    overlay.columns = ["quality_overlay", "size_score", "debt_score", "fcf_score"]
+    overlay.columns = ["quality_overlay", "size_score", "debt_score", "cash_conversion_score"]
     df = pd.concat([df, overlay], axis=1)
+    df["cash_conversion"] = df.apply(lambda row: row["fcf_b"] / softplus_leaky(row["op_margin"]), axis=1)
 
     # Combined score: final allocation score reweighted by the quality overlay
     df["combined_score"] = df.apply(
