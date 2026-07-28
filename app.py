@@ -24,11 +24,21 @@ Endpoints:
 from flask import Flask, jsonify, request
 import stock_screener as sc
 import time
+import os
 
 app = Flask(__name__)
 
 CACHE_TTL_SECONDS = 900  # 15 minutes -- repeated clicks within this window reuse fetched data
 _cache = {}  # {tuple(sorted(tickers)): (timestamp, df)}
+
+# Render sets this env var automatically on their platform. Free-tier instances
+# have limited RAM, and scanning all ~900 tickers at once was crashing the
+# server (502 Bad Gateway) -- so on Render specifically, default to a smaller,
+# curated subset unless the caller explicitly asks for specific tickers.
+# Running app.py on your own computer always gets the full universe.
+IS_RENDER = os.environ.get("RENDER") == "true"
+DEFAULT_TICKERS = sc.TICKERS[:120] if IS_RENDER else sc.TICKERS
+DEFAULT_WORKERS = 3 if IS_RENDER else 6
 
 
 @app.after_request
@@ -47,7 +57,7 @@ def screen():
         return "", 204
 
     tickers_param = request.args.get("tickers")
-    tickers = [t.strip().upper() for t in tickers_param.split(",")] if tickers_param else sc.TICKERS
+    tickers = [t.strip().upper() for t in tickers_param.split(",")] if tickers_param else DEFAULT_TICKERS
 
     # Allow the dashboard sliders to override the Formula 6 overlay live
     target = float(request.args.get("target", sc.TARGET_MARKET_CAP_B))
@@ -62,7 +72,7 @@ def screen():
         print(f"[cache hit] serving {len(tickers)} tickers from cache "
               f"({int(time.time() - cached[0])}s old)")
     else:
-        df = sc.run_screen(tickers)
+        df = sc.run_screen(tickers, max_workers=DEFAULT_WORKERS)
         if not df.empty:
             _cache[cache_key] = (time.time(), df.copy())
 
@@ -103,3 +113,4 @@ if __name__ == "__main__":
     print(f"Mid-Cap Screen API running on port {port}")
     print(f"Try: http://localhost:{port}/api/screen?tickers=AAON,MLI,UFPI")
     app.run(host="0.0.0.0", port=port, debug=False)
+
