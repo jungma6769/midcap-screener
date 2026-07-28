@@ -117,6 +117,8 @@
   .star-btn{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:0;line-height:1;}
   .star-btn.starred{color:var(--gold);}
   .star-btn:hover{color:var(--gold);}
+  .remove-btn{font-size:13px;}
+  .remove-btn:hover{color:var(--red) !important;}
   tr.tracked-row{background:rgba(201,162,39,0.06);box-shadow:inset 3px 0 0 var(--gold-dim);}
   tr.tracked-row:hover{background:rgba(201,162,39,0.1);}
 
@@ -131,14 +133,14 @@
   </div>
 
   <header>
-    <p class="eyebrow">Sample data snapshot &middot; not live</p>
-    <h1>Mid-cap quality <em>screen</em></h1>
-    <p class="sub">Formulas 1&ndash;6 recomputing in your browser as you move the sliders. Universe below is a 30-name illustrative sample of S&amp;P MidCap 400 constituents — swap in the Python backend for the full 400-name live pull.</p>
+    <p class="eyebrow" id="eyebrowText">Empty watchlist &middot; add your first stock below</p>
+    <h1>My mid-cap <em>watchlist</em></h1>
+    <p class="sub">Formulas 1&ndash;6 recomputing in your browser as you move the sliders. Add the stocks you actually own or follow — nothing is bulk-scanned, so this stays fast and light on requests.</p>
     <div class="macro-row">
       <div class="macro-chip">Risk-free (10Y) &nbsp;<b>4.30%</b></div>
       <div class="macro-chip">VIX &nbsp;<b>16.0</b></div>
       <div class="macro-chip">ERP &nbsp;<b>4.50%</b></div>
-      <div class="macro-chip">Universe &nbsp;<b id="uniCount">30</b> names</div>
+      <div class="macro-chip">Tracking &nbsp;<b id="uniCount">0</b> stocks</div>
     </div>
   </header>
 
@@ -148,13 +150,13 @@
       <p class="hint">Tune the size &amp; quality overlay (Formula 6). Rankings update instantly.</p>
 
       <div class="data-source" id="dataSourceBox">
-        <div class="ds-dot ds-sample" id="dsDot"></div>
+        <div class="ds-dot ds-loading" id="dsDot"></div>
         <div class="ds-text">
-          <span id="dsLabel">Sample data (demo)</span>
-          <button id="loadLiveBtn" type="button">Connect to live backend</button>
+          <span id="dsLabel">Checking backend…</span>
+          <button id="refreshAllBtn" type="button">Refresh all tracked</button>
         </div>
       </div>
-      <p class="hint" id="dsHint">Run <code>python app.py</code> locally, then click connect to pull real Yahoo Finance data for all 400 tickers (takes a few minutes on first load).</p>
+      <p class="hint" id="dsHint">This list starts empty. Add a stock using the search box on the right — only what you add gets fetched, nothing scanned in bulk.</p>
 
       <div class="divider"></div>
 
@@ -173,24 +175,23 @@
         <input type="range" id="dteSlider" min="0.1" max="2" step="0.05" value="0.8">
       </div>
       <div class="ctrl">
-        <label>Min FCF yield <span class="val" id="fcfVal">2.5%</span></label>
-        <input type="range" id="fcfSlider" min="0" max="10" step="0.25" value="2.5">
+        <label>Min cash conversion <span class="val" id="fcfVal">15%</span></label>
+        <input type="range" id="fcfSlider" min="-20" max="60" step="1" value="15">
       </div>
 
       <div class="divider"></div>
       <p class="weight-note">
-        <code>combined_score</code> = Final Score (Formulas 1&ndash;5) &times; Quality Overlay (size fit &times; low-debt &times; high-FCF). Click any column header to sort.
+        <code>combined_score</code> = Final Score (Formulas 1&ndash;5) &times; Quality Overlay (size fit &times; debt sweet-spot &times; cash-conversion quality). Click any column header to sort.
       </p>
     </div>
 
     <div class="table-wrap">
       <div class="table-head">
-        <h2>Ranked results</h2>
-        <span class="count-badge" id="resultCount">30 shown</span>
+        <h2>My tracked stocks</h2>
+        <span class="count-badge" id="resultCount">0 tracked</span>
       </div>
       <div class="search-row">
-        <input type="text" id="searchBox" placeholder="Search ticker or company… press Enter to look up if not found" autocomplete="off">
-        <button id="trackedToggle" type="button">★ Tracked (<span id="trackedCount">0</span>)</button>
+        <input type="text" id="searchBox" placeholder="Type a ticker (e.g. AAPL) and press Enter to add it…" autocomplete="off">
       </div>
       <div class="search-status" id="searchStatus"></div>
       <div class="scroll-x">
@@ -218,177 +219,136 @@
   </main>
 
   <footer>
-    <p><b>About this data:</b> the 30 companies below use approximate, illustrative fundamentals (market cap, debt, cash flow) meant to demonstrate how the formulas and filters behave — not real-time quotes. For live figures pulled directly from Yahoo Finance across the full S&amp;P MidCap 400, run the companion <b>stock_screener.py</b> script, which does the actual data fetch (something a browser can't do directly against Yahoo due to CORS/licensing restrictions on client-side redistribution).</p>
+    <p><b>How this works:</b> your list starts empty and only grows when you add a ticker — nothing gets bulk-scanned in the background. Each addition is a single, lightweight request to Yahoo Finance via your backend, which keeps this fast and far less likely to trip any rate limiting. Your list is saved in this browser, so it'll still be here next time you visit this site (on this device/browser).</p>
   </footer>
 
 <script>
-// ---------------- sample fundamentals (illustrative, not live) ----------------
-const COMPANIES = [
-  {ticker:"AAON", name:"AAON Inc.", sector:"Industrials", market_cap_b:9.8, beta:1.05, ev_b:10.0, total_debt_b:0.15, total_cash_b:0.10, fcf_b:0.18, revenue_growth:0.14, op_margin:0.20, capex_b:0.12, depr_b:0.05},
-  {ticker:"UFPI", name:"UFP Industries", sector:"Industrials", market_cap_b:7.9, beta:1.35, ev_b:8.1, total_debt_b:0.35, total_cash_b:0.55, fcf_b:0.30, revenue_growth:0.03, op_margin:0.08, capex_b:0.22, depr_b:0.14},
-  {ticker:"MLI", name:"Mueller Industries", sector:"Industrials", market_cap_b:9.5, beta:1.10, ev_b:9.4, total_debt_b:0.05, total_cash_b:0.65, fcf_b:0.32, revenue_growth:0.02, op_margin:0.16, capex_b:0.09, depr_b:0.05},
-  {ticker:"SFM", name:"Sprouts Farmers Market", sector:"Consumer Staples", market_cap_b:9.7, beta:0.85, ev_b:10.0, total_debt_b:0.55, total_cash_b:0.20, fcf_b:0.27, revenue_growth:0.13, op_margin:0.07, capex_b:0.20, depr_b:0.13},
-  {ticker:"CELH", name:"Celsius Holdings", ticker_sub:"", sector:"Consumer Staples", market_cap_b:8.2, beta:1.60, ev_b:8.0, total_debt_b:0.02, total_cash_b:0.75, fcf_b:0.15, revenue_growth:0.10, op_margin:0.12, capex_b:0.02, depr_b:0.01},
-  {ticker:"WING", name:"Wingstop", sector:"Consumer Discretionary", market_cap_b:6.3, beta:1.15, ev_b:6.4, total_debt_b:0.45, total_cash_b:0.10, fcf_b:0.08, revenue_growth:0.18, op_margin:0.25, capex_b:0.03, depr_b:0.02},
-  {ticker:"FIVE", name:"Five Below", sector:"Consumer Discretionary", market_cap_b:6.9, beta:1.30, ev_b:7.1, total_debt_b:0.65, total_cash_b:0.20, fcf_b:0.14, revenue_growth:0.08, op_margin:0.06, capex_b:0.30, depr_b:0.20},
-  {ticker:"OLLI", name:"Ollie's Bargain Outlet", sector:"Consumer Discretionary", market_cap_b:8.0, beta:0.95, ev_b:8.0, total_debt_b:0.00, total_cash_b:0.35, fcf_b:0.13, revenue_growth:0.10, op_margin:0.09, capex_b:0.10, depr_b:0.06},
-  {ticker:"CROX", name:"Crocs Inc.", sector:"Consumer Discretionary", market_cap_b:5.8, beta:1.75, ev_b:8.0, total_debt_b:2.30, total_cash_b:0.20, fcf_b:0.75, revenue_growth:0.03, op_margin:0.24, capex_b:0.06, depr_b:0.04},
-  {ticker:"YETI", name:"YETI Holdings", sector:"Consumer Discretionary", market_cap_b:2.2, beta:1.30, ev_b:2.2, total_debt_b:0.02, total_cash_b:0.20, fcf_b:0.18, revenue_growth:0.02, op_margin:0.14, capex_b:0.03, depr_b:0.02},
-  {ticker:"CHDN", name:"Churchill Downs", sector:"Consumer Discretionary", market_cap_b:8.7, beta:1.20, ev_b:11.5, total_debt_b:2.90, total_cash_b:0.15, fcf_b:0.20, revenue_growth:0.09, op_margin:0.28, capex_b:0.35, depr_b:0.15},
-  {ticker:"TXRH", name:"Texas Roadhouse", sector:"Consumer Discretionary", market_cap_b:10.0, beta:1.05, ev_b:10.1, total_debt_b:0.10, total_cash_b:0.20, fcf_b:0.22, revenue_growth:0.11, op_margin:0.09, capex_b:0.30, depr_b:0.16},
-  {ticker:"DUOL", name:"Duolingo", sector:"Communication Services", market_cap_b:9.9, beta:1.45, ev_b:9.6, total_debt_b:0.00, total_cash_b:0.85, fcf_b:0.16, revenue_growth:0.35, op_margin:0.08, capex_b:0.03, depr_b:0.02},
-  {ticker:"CVLT", name:"CommVault Systems", sector:"Information Technology", market_cap_b:6.5, beta:1.05, ev_b:6.3, total_debt_b:0.00, total_cash_b:0.30, fcf_b:0.10, revenue_growth:0.14, op_margin:0.14, capex_b:0.01, depr_b:0.01},
-  {ticker:"MANH", name:"Manhattan Associates", sector:"Information Technology", market_cap_b:9.5, beta:1.15, ev_b:9.2, total_debt_b:0.00, total_cash_b:0.35, fcf_b:0.15, revenue_growth:0.11, op_margin:0.24, capex_b:0.02, depr_b:0.01},
-  {ticker:"QLYS", name:"Qualys Inc.", sector:"Information Technology", market_cap_b:5.3, beta:0.95, ev_b:5.0, total_debt_b:0.00, total_cash_b:0.40, fcf_b:0.16, revenue_growth:0.10, op_margin:0.30, capex_b:0.02, depr_b:0.01},
-  {ticker:"EXPO", name:"Exponent Inc.", sector:"Industrials", market_cap_b:3.3, beta:0.90, ev_b:3.2, total_debt_b:0.00, total_cash_b:0.20, fcf_b:0.09, revenue_growth:0.04, op_margin:0.22, capex_b:0.01, depr_b:0.01},
-  {ticker:"TREX", name:"Trex Company", sector:"Industrials", market_cap_b:8.0, beta:1.30, ev_b:7.9, total_debt_b:0.00, total_cash_b:0.15, fcf_b:0.18, revenue_growth:0.15, op_margin:0.24, capex_b:0.10, depr_b:0.05},
-  {ticker:"SSD", name:"Simpson Manufacturing", sector:"Industrials", market_cap_b:6.9, beta:1.05, ev_b:6.7, total_debt_b:0.00, total_cash_b:0.25, fcf_b:0.16, revenue_growth:0.02, op_margin:0.18, capex_b:0.08, depr_b:0.05},
-  {ticker:"RGEN", name:"Repligen Corp.", sector:"Health Care", market_cap_b:9.1, beta:1.20, ev_b:8.9, total_debt_b:0.00, total_cash_b:0.30, fcf_b:0.06, revenue_growth:0.07, op_margin:0.09, capex_b:0.06, depr_b:0.04},
-  {ticker:"MEDP", name:"Medpace Holdings", sector:"Health Care", market_cap_b:9.6, beta:1.10, ev_b:9.2, total_debt_b:0.00, total_cash_b:0.55, fcf_b:0.30, revenue_growth:0.10, op_margin:0.20, capex_b:0.03, depr_b:0.02},
-  {ticker:"HALO", name:"Halozyme Therapeutics", sector:"Health Care", market_cap_b:8.6, beta:1.15, ev_b:8.4, total_debt_b:0.50, total_cash_b:0.60, fcf_b:0.42, revenue_growth:0.16, op_margin:0.55, capex_b:0.02, depr_b:0.01},
-  {ticker:"EXEL", name:"Exelixis Inc.", sector:"Health Care", market_cap_b:9.3, beta:1.10, ev_b:8.7, total_debt_b:0.00, total_cash_b:1.60, fcf_b:0.35, revenue_growth:0.08, op_margin:0.28, capex_b:0.02, depr_b:0.01},
-  {ticker:"BURL", name:"Burlington Stores", sector:"Consumer Discretionary", market_cap_b:20.0, beta:1.30, ev_b:21.5, total_debt_b:2.50, total_cash_b:0.30, fcf_b:0.45, revenue_growth:0.10, op_margin:0.06, capex_b:0.40, depr_b:0.25},
-  {ticker:"RH", name:"RH", sector:"Consumer Discretionary", market_cap_b:4.4, beta:2.30, ev_b:8.5, total_debt_b:4.20, total_cash_b:0.10, fcf_b:0.20, revenue_growth:0.09, op_margin:0.14, capex_b:0.20, depr_b:0.09},
-  {ticker:"WSO", name:"Watsco Inc.", sector:"Industrials", market_cap_b:16.0, beta:1.05, ev_b:16.3, total_debt_b:0.35, total_cash_b:0.10, fcf_b:0.35, revenue_growth:0.03, op_margin:0.10, capex_b:0.05, depr_b:0.03},
-  {ticker:"LECO", name:"Lincoln Electric", sector:"Industrials", market_cap_b:9.0, beta:1.10, ev_b:9.4, total_debt_b:0.55, total_cash_b:0.15, fcf_b:0.22, revenue_growth:0.02, op_margin:0.16, capex_b:0.07, depr_b:0.04},
-  {ticker:"GGG", name:"Graco Inc.", sector:"Industrials", market_cap_b:9.9, beta:1.10, ev_b:9.9, total_debt_b:0.05, total_cash_b:0.20, fcf_b:0.28, revenue_growth:0.04, op_margin:0.24, capex_b:0.04, depr_b:0.02},
-  {ticker:"NBIX", name:"Neurocrine Biosciences", sector:"Health Care", market_cap_b:9.7, beta:0.95, ev_b:9.0, total_debt_b:0.00, total_cash_b:1.20, fcf_b:0.30, revenue_growth:0.20, op_margin:0.22, capex_b:0.02, depr_b:0.01},
-  {ticker:"IBOC", name:"Intl Bancshares Corp", sector:"Financials", market_cap_b:5.4, beta:0.80, ev_b:5.4, total_debt_b:0.10, total_cash_b:0.90, fcf_b:0.24, revenue_growth:0.03, op_margin:0.45, capex_b:0.02, depr_b:0.02},
-];
+// Points at the live Render backend. If you ever go back to testing on your
+// own computer only, change this back to "http://localhost:5001".
+const API_BASE = "https://midcap-screener-92ec.onrender.com";
 
-const RF_DEFAULT = 0.043, VIX_DEFAULT = 16.0;
-let RF = RF_DEFAULT, VIX = VIX_DEFAULT;
-const ERP = 0.045, G_MACRO = 0.02;
-// ⚠️ CHANGE THIS after deploying app.py to Render/Railway/etc.
-// Replace with your real backend URL, e.g. "https://your-app-name.onrender.com"
-// Keep "http://localhost:5001" if you're still just testing on your own computer.
-const API_BASE = "http://localhost:5001";
+const STORAGE_KEY = "midcap_watchlist_tickers_v2";
 
-let DATASET = COMPANIES;  // starts as the sample set; replaced on successful live fetch
-
-function softplusLeaky(x){ return Math.log1p(Math.exp(x)) + 0.1*Math.log1p(Math.exp(-x)); }
-
-function formula1(beta, ev, m){
-  const vixTerm = (1 - 1/(1+Math.exp(ev/m))) * (beta * VIX/100);
-  const sizeTerm = 0.03 * (1 - Math.exp(-Math.max(0,(m-5)/5)));
-  return RF + beta*ERP + vixTerm + sizeTerm;
+// ---------------- watchlist persistence ----------------
+// Only the ticker symbols are saved -- all scoring/formula math now happens
+// server-side (stock_screener.py is the single source of truth), so on
+// reload we just re-ask the backend to (re)compute everything fresh.
+function loadSavedTickers(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(err){
+    console.warn("Couldn't read saved watchlist:", err);
+    return [];
+  }
 }
-function formula2(g, r, capex, depr, opMargin){
-  const denom = softplusLeaky(opMargin);
-  const reinvest = (capex-depr)/denom;
-  return Math.min(g, r-0.01, Math.max(G_MACRO, reinvest));
-}
-function formula3(f, m, r, g){
-  const yieldTerm = f/m;
-  const shapeTerm = Math.tanh(f)*Math.max(0,g) + 1/(1+Math.exp(-f));
-  const stabilityTerm = 1/Math.sqrt((r-g)**2 + 0.0004);
-  return yieldTerm*shapeTerm*stabilityTerm;
-}
-function median(arr){ const s=[...arr].sort((a,b)=>a-b); const n=s.length; return n%2? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2; }
-function factorScores(atsvArr){
-  const m = median(atsvArr);
-  const mad = median(atsvArr.map(v=>Math.abs(v-m))) || 1e-6;
-  return atsvArr.map(v=>{
-    const z = 0.7*((v-m)/mad); // industry PR omitted at this sample size -> weight folded into z term
-    return Math.max(-3, Math.min(3, z));
-  });
-}
-function formula5(factor, cash, f, opMargin, dAdj, Td=4){
-  const denom = softplusLeaky(opMargin);
-  const liquidity = 1/(1+Math.exp(-(cash/Math.abs(f) * (10/(VIX/100)))));
-  const leverage = 1/(1+Math.exp(2*(f/denom + 0.5)));
-  const debtDecay = Math.exp(-Math.max(0,(dAdj/denom)/Td));
-  return factor*liquidity*leverage*debtDecay;
-}
-function formula6(marketCapB, dte, fcfYield, target, sigma, maxDte, minFcf){
-  const size = Math.exp(-((Math.log(marketCapB)-Math.log(target))**2)/(2*sigma**2));
-  const debt = 1/(1+Math.exp(4*(dte-maxDte)));
-  const fcf = 1/(1+Math.exp(-5*(fcfYield-minFcf)));
-  return {overlay: size*debt*fcf, size, debt, fcf};
+function saveTickers(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DATASET.map(c => c.ticker)));
+  }catch(err){
+    console.warn("Couldn't save watchlist:", err);
+  }
 }
 
-// BUGFIX (matches stock_screener.py combine_final_and_quality): a straight
-// final_score * overlay crushes bad companies toward zero instead of leaving
-// them clearly negative, since overlay is always in [0,1]. When final_score
-// is already negative, a poor overlay should make it WORSE, not erase it.
-function combineFinalAndQuality(finalScore, overlay){
-  return finalScore >= 0 ? finalScore*overlay : finalScore*(2-overlay);
-}
-
-let sortKey = "combined_score", sortDesc = true; // true = highest value on top (best first)
-
-let lastScoredRows = [];  // full scored+sorted set, before search/tracked filtering
-let trackedTickers = new Set();
+let DATASET = [];          // scored rows, straight from the backend -- no client-side formula math
+let sortKey = "combined_score", sortDesc = true;
 let searchQuery = "";
-let showTrackedOnly = false;
 
-function compute(){
-  const target = parseFloat(document.getElementById("capSlider").value);
-  const maxDte = parseFloat(document.getElementById("dteSlider").value);
-  const minFcf = parseFloat(document.getElementById("fcfSlider").value)/100;
-
-  document.getElementById("capVal").textContent = "$" + target.toFixed(1) + "B";
-  document.getElementById("dteVal").textContent = maxDte.toFixed(2);
-  document.getElementById("fcfVal").textContent = (minFcf*100).toFixed(1) + "%";
-
-  const rows = DATASET.map(c=>{
-    if(c._live){
-      // Backend already computed R/G/ATSV/Final Score using real fetched macro data --
-      // reuse those as-is, only Formula 6 + combined_score need recomputing per-slider.
-      return {...c, dte: c.debt_to_equity, fcfYield: c.fcf_yield};
-    }
-    const r = formula1(c.beta, c.ev_b, c.market_cap_b);
-    const g = formula2(c.revenue_growth, r, c.capex_b, c.depr_b, c.op_margin);
-    const atsv = formula3(c.fcf_b, c.market_cap_b, r, g);
-    const netDebt = Math.max(0, c.total_debt_b - c.total_cash_b);
-    const dte = c.total_debt_b>0 ? c.total_debt_b/Math.max(0.1, c.market_cap_b*0.4) : 0; // rough proxy equity base
-    const fcfYield = c.fcf_b/c.market_cap_b;
-    return {...c, r, g, atsv, netDebt, dte, fcfYield};
-  });
-
-  // Sample rows need factor_score/final_score derived locally; live rows already have them.
-  const needsFactor = rows.filter(r => !r._live);
-  if(needsFactor.length){
-    const factors = factorScores(needsFactor.map(r=>r.atsv));
-    needsFactor.forEach((row,i)=>{ row.factor_score = factors[i]; });
-    needsFactor.forEach(row=>{
-      row.final_score = formula5(row.factor_score, row.total_cash_b, row.fcf_b, row.op_margin, row.netDebt);
-    });
-  }
-
-  rows.forEach(row=>{
-    const q = formula6(row.market_cap_b, row.dte, row.fcfYield, target, 0.8, maxDte, minFcf);
-    row.quality_overlay = q.overlay;
-    row.combined_score = combineFinalAndQuality(row.final_score, q.overlay);
-  });
-
-  rows.sort((a,b)=> sortDesc ? (b[sortKey]??0)-(a[sortKey]??0) : (a[sortKey]??0)-(b[sortKey]??0));
-  rows.forEach((row,i)=>{ row.rank = i+1; });  // true rank, fixed regardless of later filtering
-  lastScoredRows = rows;
-  applyFiltersAndRender();
+function mapRow(r){
+  return {
+    ticker: r.ticker,
+    name: r.industry || r.sector || r.ticker,
+    sector: r.sector || "",
+    market_cap_b: r.market_cap_b,
+    debt_to_equity: r.debt_to_equity,
+    fcf_yield: r.fcf_yield,
+    r: r.r,
+    g: r.g,
+    atsv: r.atsv,
+    final_score: r.final_score,
+    quality_overlay: r.quality_overlay,
+    combined_score: r.combined_score,
+  };
 }
 
-function applyFiltersAndRender(){
-  let filtered = lastScoredRows;
-  if(showTrackedOnly){
-    filtered = filtered.filter(r => trackedTickers.has(r.ticker));
-  }
+function sliderParams(){
+  const p = new URLSearchParams();
+  p.set("target", document.getElementById("capSlider").value);
+  p.set("max_dte", document.getElementById("dteSlider").value);
+  p.set("min_cash_conversion", (parseFloat(document.getElementById("fcfSlider").value)/100).toString());
+  return p;
+}
+
+// Single function for talking to the backend: given a list of tickers, ask it
+// to fetch (or reuse cached) fundamentals AND apply the current slider settings,
+// returning fully-scored rows. Used for adding, refreshing, AND slider changes.
+async function fetchScoredRows(tickers){
+  const params = sliderParams();
+  params.set("tickers", tickers.join(","));
+  const res = await fetch(`${API_BASE}/api/screen?${params.toString()}`);
+  if(!res.ok) throw new Error("HTTP " + res.status);
+  const json = await res.json();
+  if(!json.rows || !json.rows.length) throw new Error("No data returned");
+  return json.rows.map(mapRow);
+}
+
+function debounce(fn, wait){
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), wait);
+  };
+}
+
+// ---------------- rendering (pure display logic -- no formula math here) ----------------
+function refreshLabelsAndSort(){
+  document.getElementById("capVal").textContent = "$" + parseFloat(document.getElementById("capSlider").value).toFixed(1) + "B";
+  document.getElementById("dteVal").textContent = parseFloat(document.getElementById("dteSlider").value).toFixed(2);
+  document.getElementById("fcfVal").textContent = parseFloat(document.getElementById("fcfSlider").value).toFixed(1) + "%";
+  document.getElementById("uniCount").textContent = DATASET.length;
+  document.getElementById("eyebrowText").textContent = DATASET.length
+    ? `Tracking ${DATASET.length} stock${DATASET.length===1?'':'s'}`
+    : "Empty watchlist · add your first stock below";
+
+  const sorted = [...DATASET].sort((a,b)=> sortDesc ? (b[sortKey]??0)-(a[sortKey]??0) : (a[sortKey]??0)-(b[sortKey]??0));
+  sorted.forEach((row,i)=>{ row.rank = i+1; });
+
+  updateTape(sorted);
+
+  let filtered = sorted;
   if(searchQuery){
     const q = searchQuery.toLowerCase();
-    filtered = filtered.filter(r =>
-      r.ticker.toLowerCase().includes(q) || (r.name||"").toLowerCase().includes(q)
-    );
+    filtered = filtered.filter(r => r.ticker.toLowerCase().includes(q) || (r.name||"").toLowerCase().includes(q));
   }
   render(filtered);
+}
+
+function updateTape(sorted){
+  const wrap = document.querySelector(".tape-wrap");
+  const tapeEl = document.getElementById("tape");
+  if(!DATASET.length){ wrap.style.display = "none"; return; }
+  wrap.style.display = "";
+  const items = sorted.map(c=>{
+    const delta = (c.combined_score*100).toFixed(1);
+    const cls = c.combined_score>=0 ? "up" : "down";
+    const sign = c.combined_score>=0 ? "+" : "";
+    return `<span><b>${c.ticker}</b> $${c.market_cap_b.toFixed(1)}B <span class="${cls}">${sign}${delta}</span></span>`;
+  }).join("");
+  tapeEl.innerHTML = items + items;
 }
 
 function render(rows){
   const tbody = document.getElementById("tbody");
   tbody.innerHTML = "";
 
+  if(!DATASET.length){
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:32px 24px;">Your watchlist is empty. Type a ticker above (like <span style="color:var(--gold);">AAPL</span> or <span style="color:var(--gold);">MLI</span>) and press Enter to add it.</td></tr>`;
+    document.getElementById("resultCount").textContent = "0 tracked";
+    return;
+  }
   if(!rows.length){
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:24px;">No matches.</td></tr>`;
-    document.getElementById("resultCount").textContent = "0 shown";
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:24px;">No matches for that search.</td></tr>`;
+    document.getElementById("resultCount").textContent = `0 of ${DATASET.length} shown`;
     return;
   }
 
@@ -396,16 +356,14 @@ function render(rows){
 
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    const isTracked = trackedTickers.has(row.ticker);
-    if(isTracked) tr.classList.add("tracked-row");
     const barPct = Math.max(2, Math.min(100, (Math.abs(row.combined_score)/maxCombined)*100));
     tr.innerHTML = `
-      <td class="left star-cell"><button class="star-btn ${isTracked?'starred':''}" data-ticker="${row.ticker}" title="${isTracked?'Untrack':'Track this company'}">${isTracked?'★':'☆'}</button></td>
+      <td class="left star-cell"><button class="star-btn remove-btn" data-ticker="${row.ticker}" title="Remove from watchlist">✕</button></td>
       <td class="left rank">${row.rank}</td>
       <td class="left"><span class="tk">${row.ticker}</span><span class="nm">${row.name}</span></td>
       <td>$${row.market_cap_b.toFixed(1)}B</td>
-      <td>${row.dte.toFixed(2)}</td>
-      <td>${(row.fcfYield*100).toFixed(1)}%</td>
+      <td>${row.debt_to_equity.toFixed(2)}</td>
+      <td>${(row.fcf_yield*100).toFixed(1)}%</td>
       <td>${(row.r*100).toFixed(1)}%</td>
       <td>${(row.g*100).toFixed(1)}%</td>
       <td>${row.atsv.toFixed(2)}</td>
@@ -421,18 +379,20 @@ function render(rows){
     tbody.appendChild(tr);
   });
 
-  tbody.querySelectorAll(".star-btn").forEach(btn=>{
+  tbody.querySelectorAll(".remove-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const tk = btn.getAttribute("data-ticker");
-      if(trackedTickers.has(tk)) trackedTickers.delete(tk); else trackedTickers.add(tk);
-      document.getElementById("trackedCount").textContent = trackedTickers.size;
-      applyFiltersAndRender();
+      DATASET = DATASET.filter(c => c.ticker !== tk);
+      saveTickers();
+      refreshLabelsAndSort();
     });
   });
 
-  document.getElementById("resultCount").textContent = rows.length + " shown";
+  document.getElementById("resultCount").textContent =
+    rows.length === DATASET.length ? `${DATASET.length} tracked` : `${rows.length} of ${DATASET.length} shown`;
 }
 
+// ---------------- controls ----------------
 document.querySelectorAll("th[data-key]").forEach(th=>{
   th.addEventListener("click", ()=>{
     const key = th.getAttribute("data-key");
@@ -440,17 +400,34 @@ document.querySelectorAll("th[data-key]").forEach(th=>{
     if(sortKey===key){ sortDesc = !sortDesc; } else { sortKey=key; sortDesc=true; }
     document.querySelectorAll("th").forEach(h=>h.classList.remove("active-sort"));
     th.classList.add("active-sort");
-    compute();
+    refreshLabelsAndSort();
   });
 });
 
-document.getElementById("capSlider").addEventListener("input", compute);
-document.getElementById("dteSlider").addEventListener("input", compute);
-document.getElementById("fcfSlider").addEventListener("input", compute);
+document.querySelectorAll(".preset-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".preset-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const presets = { strict:{dte:0.5,fcf:30}, moderate:{dte:0.8,fcf:15}, lenient:{dte:1.3,fcf:0} };
+    const p = presets[btn.getAttribute("data-preset")];
+    document.getElementById("dteSlider").value = p.dte;
+    document.getElementById("fcfSlider").value = p.fcf;
+    onSliderChange();
+  });
+});
+
+const debouncedRecompute = debounce(recomputeFromBackend, 450);
+function onSliderChange(){
+  refreshLabelsAndSort();  // instant label update, using last-known scores
+  debouncedRecompute();     // then ask the backend for the real recompute, debounced
+}
+document.getElementById("capSlider").addEventListener("input", onSliderChange);
+document.getElementById("dteSlider").addEventListener("input", onSliderChange);
+document.getElementById("fcfSlider").addEventListener("input", onSliderChange);
 
 document.getElementById("searchBox").addEventListener("input", (e)=>{
   searchQuery = e.target.value.trim();
-  applyFiltersAndRender();
+  refreshLabelsAndSort();
 });
 
 document.getElementById("searchBox").addEventListener("keydown", async (e)=>{
@@ -459,165 +436,113 @@ document.getElementById("searchBox").addEventListener("keydown", async (e)=>{
   if(!q) return;
   const exists = DATASET.some(c => c.ticker.toUpperCase() === q);
   if(exists){
-    document.getElementById("searchStatus").textContent = "";
+    document.getElementById("searchStatus").textContent = `${q} is already on your list.`;
     document.getElementById("searchStatus").className = "search-status";
     return;
   }
-  await lookupAndAddTicker(q);
+  await addTicker(q);
 });
 
-document.getElementById("trackedToggle").addEventListener("click", ()=>{
-  showTrackedOnly = !showTrackedOnly;
-  document.getElementById("trackedToggle").classList.toggle("active", showTrackedOnly);
-  applyFiltersAndRender();
-});
+// ---------------- backend calls ----------------
+function setStatus(state, label){
+  document.getElementById("dsDot").className = "ds-dot ds-" + state;
+  document.getElementById("dsLabel").textContent = label;
+}
 
-async function lookupAndAddTicker(ticker){
+async function checkBackendHealth(){
+  try{
+    const res = await fetch(`${API_BASE}/api/health`);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    setStatus("live", "Backend online");
+  }catch(err){
+    setStatus("error", "Backend offline — adding stocks won't work right now");
+  }
+}
+
+async function recomputeFromBackend(){
+  // Re-scores the CURRENT watchlist against the current slider settings.
+  // Cheap: the backend reuses its cache for fundamentals it already has,
+  // it's only re-running Formula 6 + the combine step, not re-fetching Yahoo.
+  if(!DATASET.length) return;
+  try{
+    const rows = await fetchScoredRows(DATASET.map(c=>c.ticker));
+    DATASET = rows;
+    refreshLabelsAndSort();
+  }catch(err){
+    console.error("Recompute failed:", err);
+    // Leave the last-known scores on screen rather than clearing the table.
+  }
+}
+
+async function addTicker(ticker){
   const statusEl = document.getElementById("searchStatus");
-  statusEl.textContent = `Not in the current list — looking up ${ticker} from Yahoo Finance…`;
+  statusEl.textContent = `Looking up ${ticker} from Yahoo Finance…`;
   statusEl.className = "search-status loading";
   try{
-    const res = await fetch(`${API_BASE}/api/screen?tickers=${encodeURIComponent(ticker)}`);
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const json = await res.json();
-    if(!json.rows || !json.rows.length) throw new Error("No data returned");
-    const r = json.rows[0];
+    const rows = await fetchScoredRows([ticker]);
+    const newRow = rows[0];
+    DATASET = DATASET.filter(c => c.ticker !== newRow.ticker);
+    DATASET.push(newRow);
+    saveTickers();
 
-    const mapped = {
-      _live: true,
-      ticker: r.ticker,
-      name: r.industry || r.sector || r.ticker,
-      sector: r.sector || "",
-      market_cap_b: r.market_cap_b,
-      beta: r.beta,
-      ev_b: r.enterprise_value_b,
-      total_debt_b: r.total_debt_b,
-      total_cash_b: r.total_cash_b,
-      fcf_b: r.fcf_b,
-      revenue_growth: r.revenue_growth,
-      op_margin: r.op_margin,
-      capex_b: r.capex_b,
-      depr_b: r.depr_b,
-      debt_to_equity: r.debt_to_equity,
-      fcf_yield: r.fcf_yield,
-      r: r.r,
-      g: r.g,
-      atsv: r.atsv,
-      final_score: r.final_score,
-    };
-
-    DATASET = DATASET.filter(c => c.ticker !== mapped.ticker);
-    DATASET.push(mapped);
-    trackedTickers.add(mapped.ticker);
-    document.getElementById("trackedCount").textContent = trackedTickers.size;
-
-    statusEl.textContent = `Added ${ticker} and started tracking it.`;
+    statusEl.textContent = `Added ${ticker} to your watchlist.`;
     statusEl.className = "search-status success";
     document.getElementById("searchBox").value = "";
     searchQuery = "";
-    refreshChrome();
-    compute();
+    refreshLabelsAndSort();
   }catch(err){
-    statusEl.textContent = `Couldn't look up "${ticker}" — make sure the backend (app.py) is running, and double-check the ticker symbol.`;
+    statusEl.textContent = `Couldn't find "${ticker}" — double-check the ticker symbol, or the backend may be temporarily unavailable.`;
     statusEl.className = "search-status error";
     console.error(err);
   }
 }
 
-document.querySelectorAll(".preset-btn").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    document.querySelectorAll(".preset-btn").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    const presets = {
-      strict:   {dte:0.5, fcf:5.0},
-      moderate: {dte:0.8, fcf:2.5},
-      lenient:  {dte:1.3, fcf:0.5},
-    };
-    const p = presets[btn.getAttribute("data-preset")];
-    document.getElementById("dteSlider").value = p.dte;
-    document.getElementById("fcfSlider").value = p.fcf;
-    compute();
-  });
-});
-
-function setStatus(state, label){
-  const dot = document.getElementById("dsDot");
-  const lbl = document.getElementById("dsLabel");
-  dot.className = "ds-dot ds-" + state;
-  lbl.textContent = label;
-}
-
-function refreshChrome(){
-  // ticker tape + macro chips reflect whichever dataset is active
-  const tapeEl = document.getElementById("tape");
-  const items = DATASET.map(c=>{
-    const delta = (c.revenue_growth*100 - 5).toFixed(1);
-    const cls = delta>=0 ? "up" : "down";
-    const sign = delta>=0 ? "+" : "";
-    return `<span><b>${c.ticker}</b> $${c.market_cap_b.toFixed(1)}B <span class="${cls}">${sign}${delta}%</span></span>`;
-  }).join("");
-  tapeEl.innerHTML = items + items;
-  document.getElementById("uniCount").textContent = DATASET.length;
-}
-
-async function loadLiveData(){
-  const btn = document.getElementById("loadLiveBtn");
+async function refreshAllTracked(){
+  if(!DATASET.length){
+    document.getElementById("searchStatus").textContent = "Nothing to refresh yet — add a stock first.";
+    document.getElementById("searchStatus").className = "search-status";
+    return;
+  }
+  const btn = document.getElementById("refreshAllBtn");
   btn.disabled = true;
-  setStatus("loading", "Connecting…");
+  const statusEl = document.getElementById("searchStatus");
+  statusEl.textContent = `Refreshing ${DATASET.length} tracked stock${DATASET.length===1?'':'s'}…`;
+  statusEl.className = "search-status loading";
   try{
-    let res;
-    try{
-      res = await fetch(`${API_BASE}/api/screen`);
-    }catch(networkErr){
-      setStatus("error", "Backend not reachable — is app.py running? Using sample data.");
-      return;
-    }
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    const json = await res.json();
-    if(!json.rows || !json.rows.length){
-      setStatus("error", "Backend reachable, but Yahoo returned no data (likely rate-limited) — wait a few minutes and try again.");
-      return;
-    }
-
-    DATASET = json.rows.map(r => ({
-      _live: true,
-      ticker: r.ticker,
-      name: r.industry || r.sector || r.ticker,
-      sector: r.sector || "",
-      market_cap_b: r.market_cap_b,
-      beta: r.beta,
-      ev_b: r.enterprise_value_b,
-      total_debt_b: r.total_debt_b,
-      total_cash_b: r.total_cash_b,
-      fcf_b: r.fcf_b,
-      revenue_growth: r.revenue_growth,
-      op_margin: r.op_margin,
-      capex_b: r.capex_b,
-      depr_b: r.depr_b,
-      debt_to_equity: r.debt_to_equity,
-      fcf_yield: r.fcf_yield,
-      r: r.r,
-      g: r.g,
-      atsv: r.atsv,
-      final_score: r.final_score,
-    }));
-
-    setStatus("live", `Live — ${DATASET.length} tickers from Yahoo Finance`);
-    refreshChrome();
-    compute();
+    DATASET = await fetchScoredRows(DATASET.map(c=>c.ticker));
+    saveTickers();
+    statusEl.textContent = `Refreshed ${DATASET.length} stock${DATASET.length===1?'':'s'} with the latest data.`;
+    statusEl.className = "search-status success";
+    refreshLabelsAndSort();
   }catch(err){
-    setStatus("error", "Something went wrong — check the app.py terminal window for details.");
+    statusEl.textContent = "Couldn't refresh right now — try again in a moment.";
+    statusEl.className = "search-status error";
     console.error(err);
   }finally{
     btn.disabled = false;
   }
 }
+document.getElementById("refreshAllBtn").addEventListener("click", refreshAllTracked);
 
-document.getElementById("loadLiveBtn").addEventListener("click", loadLiveData);
-
-// ticker tape content (initial, sample data)
-refreshChrome();
-compute();
+// ---------------- init ----------------
+async function init(){
+  checkBackendHealth();
+  const savedTickers = loadSavedTickers();
+  if(savedTickers.length){
+    document.getElementById("searchStatus").textContent = `Loading your ${savedTickers.length} saved stock${savedTickers.length===1?'':'s'}…`;
+    document.getElementById("searchStatus").className = "search-status loading";
+    try{
+      DATASET = await fetchScoredRows(savedTickers);
+      document.getElementById("searchStatus").textContent = "";
+      document.getElementById("searchStatus").className = "search-status";
+    }catch(err){
+      document.getElementById("searchStatus").textContent = "Couldn't reload your saved watchlist — the backend may be waking up (free tier sleeps when idle). Try refreshing in a minute.";
+      document.getElementById("searchStatus").className = "search-status error";
+    }
+  }
+  refreshLabelsAndSort();
+}
+init();
 </script>
 </body>
 </html>
