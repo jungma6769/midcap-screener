@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mid-Cap Quality Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#12151a;
+    --panel:#1b1f26;
+    --panel-2:#20252d;
+    --border:#2a2f38;
+    --text:#e7e4dc;
+    --muted:#8a8f98;
+    --gold:#c9a227;
+    --gold-dim:#8f7419;
+    --green:#4f9d69;
+    --red:#c1483e;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  ::selection{background:var(--gold-dim);color:#fff;}
+
+  /* ---------- ticker tape ---------- */
+  .tape-wrap{border-bottom:1px solid var(--border);background:#0e1116;overflow:hidden;white-space:nowrap;}
+  .tape{display:inline-block;padding:8px 0;animation:scroll 38s linear infinite;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.02em;}
+  .tape span{margin:0 22px;color:var(--muted);}
+  .tape b{color:var(--text);font-weight:600;}
+  .up{color:var(--green);}
+  .down{color:var(--red);}
+  @keyframes scroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  /* ---------- header ---------- */
+  header{padding:36px 32px 20px;max-width:1180px;margin:0 auto;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:0 0 10px;}
+  h1{font-family:'Fraunces',serif;font-weight:600;font-size:38px;line-height:1.05;margin:0 0 10px;letter-spacing:-.01em;}
+  h1 em{font-style:italic;color:var(--gold);}
+  .sub{color:var(--muted);font-size:14.5px;max-width:620px;line-height:1.55;margin:0 0 22px;}
+  .macro-row{display:flex;gap:10px;flex-wrap:wrap;}
+  .macro-chip{border:1px solid var(--border);background:var(--panel);border-radius:6px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  .macro-chip b{color:var(--text);font-weight:600;}
+
+  /* ---------- layout ---------- */
+  main{max-width:1180px;margin:0 auto;padding:0 32px 60px;display:grid;grid-template-columns:260px 1fr;gap:24px;}
+  @media (max-width:860px){main{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px;}
+  .panel h2{font-family:'Fraunces',serif;font-size:16px;font-weight:600;margin:0 0 4px;}
+  .panel .hint{font-size:12px;color:var(--muted);margin:0 0 18px;line-height:1.5;}
+
+  .ctrl{margin-bottom:20px;}
+  .ctrl label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text);margin-bottom:8px;}
+  .ctrl label .val{font-family:'IBM Plex Mono',monospace;color:var(--gold);}
+  input[type=range]{-webkit-appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid #0e1116;}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid #0e1116;}
+
+  .preset-row{display:flex;gap:6px;margin-bottom:22px;}
+  .preset-btn{flex:1;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;padding:7px 4px;border-radius:5px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);cursor:pointer;transition:.15s;}
+  .preset-btn:hover{color:var(--text);border-color:var(--gold-dim);}
+  .preset-btn.active{background:var(--gold-dim);color:#fff;border-color:var(--gold-dim);}
+
+  .divider{height:1px;background:var(--border);margin:20px 0;}
+  .weight-note{font-size:11.5px;color:var(--muted);line-height:1.5;}
+  .weight-note code{font-family:'IBM Plex Mono',monospace;color:var(--gold);}
+
+  .data-source{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;}
+  .ds-dot{width:9px;height:9px;border-radius:50%;margin-top:4px;flex:none;}
+  .ds-sample{background:var(--gold-dim);}
+  .ds-live{background:var(--green);box-shadow:0 0 6px var(--green);}
+  .ds-error{background:var(--red);}
+  .ds-loading{background:var(--gold);animation:pulse 1s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  .ds-text{display:flex;flex-direction:column;gap:6px;font-size:12.5px;}
+  #loadLiveBtn{align-self:flex-start;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.02em;background:transparent;border:1px solid var(--gold-dim);color:var(--gold);padding:5px 10px;border-radius:5px;cursor:pointer;transition:.15s;}
+  #loadLiveBtn:hover{background:var(--gold-dim);color:#fff;}
+  #loadLiveBtn:disabled{opacity:.5;cursor:default;}
+  .hint code{font-family:'IBM Plex Mono',monospace;color:var(--gold);background:#0e1116;padding:1px 5px;border-radius:3px;}
+
+  /* ---------- table ---------- */
+  .table-wrap{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .table-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border);}
+  .table-head h2{font-family:'Fraunces',serif;font-size:16px;font-weight:600;margin:0;}
+  .count-badge{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted);}
+  .scroll-x{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;font-size:12.5px;min-width:900px;}
+  thead th{text-align:right;padding:10px 12px;color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.03em;text-transform:uppercase;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);white-space:nowrap;}
+  thead th:hover{color:var(--gold);}
+  thead th.left,tbody td.left{text-align:left;}
+  thead th.active-sort{color:var(--gold);}
+  tbody td{padding:9px 12px;text-align:right;border-bottom:1px solid #22262e;white-space:nowrap;}
+  tbody tr:hover{background:var(--panel-2);}
+  .rank{color:var(--muted);}
+  .tk{font-weight:600;color:var(--text);font-family:'IBM Plex Mono',monospace;}
+  .nm{color:var(--muted);font-size:11px;display:block;font-family:'Inter',sans-serif;}
+  .bar-cell{display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+  .bar-track{width:52px;height:5px;background:#2a2f38;border-radius:3px;overflow:hidden;}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--gold-dim),var(--gold));}
+  .pos{color:var(--green);}
+  .neg{color:var(--red);}
+
+  .search-row{display:flex;gap:10px;padding:0 18px 14px;}
+  #searchBox{flex:1;background:#0e1116;border:1px solid var(--border);border-radius:6px;padding:9px 12px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:12.5px;outline:none;}
+  #searchBox:focus{border-color:var(--gold-dim);}
+  #searchBox::placeholder{color:#565b64;}
+  #trackedToggle{flex:none;font-family:'IBM Plex Mono',monospace;font-size:11.5px;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 12px;border-radius:6px;cursor:pointer;transition:.15s;white-space:nowrap;}
+  #trackedToggle:hover{border-color:var(--gold-dim);color:var(--text);}
+  #trackedToggle.active{background:var(--gold-dim);color:#fff;border-color:var(--gold-dim);}
+  .search-status{padding:0 18px 10px;font-size:11.5px;font-family:'IBM Plex Mono',monospace;min-height:14px;}
+  .search-status.loading{color:var(--gold);}
+  .search-status.success{color:var(--green);}
+  .search-status.error{color:var(--red);}
+
+  .star-cell{padding-right:0 !important;}
+  .star-btn{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;padding:0;line-height:1;}
+  .star-btn.starred{color:var(--gold);}
+  .star-btn:hover{color:var(--gold);}
+  tr.tracked-row{background:rgba(201,162,39,0.06);box-shadow:inset 3px 0 0 var(--gold-dim);}
+  tr.tracked-row:hover{background:rgba(201,162,39,0.1);}
+
+  footer{max-width:1180px;margin:0 auto;padding:0 32px 50px;color:var(--muted);font-size:12px;line-height:1.6;}
+  footer b{color:var(--text);}
+</style>
+</head>
+<body>
+
+  <div class="tape-wrap">
+    <div class="tape" id="tape"></div>
+  </div>
+
+  <header>
+    <p class="eyebrow">Sample data snapshot &middot; not live</p>
+    <h1>Mid-cap quality <em>screen</em></h1>
+    <p class="sub">Formulas 1&ndash;6 recomputing in your browser as you move the sliders. Universe below is a 30-name illustrative sample of S&amp;P MidCap 400 constituents — swap in the Python backend for the full 400-name live pull.</p>
+    <div class="macro-row">
+      <div class="macro-chip">Risk-free (10Y) &nbsp;<b>4.30%</b></div>
+      <div class="macro-chip">VIX &nbsp;<b>16.0</b></div>
+      <div class="macro-chip">ERP &nbsp;<b>4.50%</b></div>
+      <div class="macro-chip">Universe &nbsp;<b id="uniCount">30</b> names</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="panel">
+      <h2>Screen controls</h2>
+      <p class="hint">Tune the size &amp; quality overlay (Formula 6). Rankings update instantly.</p>
+
+      <div class="data-source" id="dataSourceBox">
+        <div class="ds-dot ds-sample" id="dsDot"></div>
+        <div class="ds-text">
+          <span id="dsLabel">Sample data (demo)</span>
+          <button id="loadLiveBtn" type="button">Connect to live backend</button>
+        </div>
+      </div>
+      <p class="hint" id="dsHint">Run <code>python app.py</code> locally, then click connect to pull real Yahoo Finance data for all 400 tickers (takes a few minutes on first load).</p>
+
+      <div class="divider"></div>
+
+      <div class="preset-row">
+        <button class="preset-btn" data-preset="strict">Strict</button>
+        <button class="preset-btn active" data-preset="moderate">Moderate</button>
+        <button class="preset-btn" data-preset="lenient">Lenient</button>
+      </div>
+
+      <div class="ctrl">
+        <label>Target market cap <span class="val" id="capVal">$6.0B</span></label>
+        <input type="range" id="capSlider" min="1" max="14" step="0.5" value="6">
+      </div>
+      <div class="ctrl">
+        <label>Max debt / equity <span class="val" id="dteVal">0.80</span></label>
+        <input type="range" id="dteSlider" min="0.1" max="2" step="0.05" value="0.8">
+      </div>
+      <div class="ctrl">
+        <label>Min FCF yield <span class="val" id="fcfVal">2.5%</span></label>
+        <input type="range" id="fcfSlider" min="0" max="10" step="0.25" value="2.5">
+      </div>
+
+      <div class="divider"></div>
+      <p class="weight-note">
+        <code>combined_score</code> = Final Score (Formulas 1&ndash;5) &times; Quality Overlay (size fit &times; low-debt &times; high-FCF). Click any column header to sort.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-head">
+        <h2>Ranked results</h2>
+        <span class="count-badge" id="resultCount">30 shown</span>
+      </div>
+      <div class="search-row">
+        <input type="text" id="searchBox" placeholder="Search ticker or company… press Enter to look up if not found" autocomplete="off">
+        <button id="trackedToggle" type="button">★ Tracked (<span id="trackedCount">0</span>)</button>
+      </div>
+      <div class="search-status" id="searchStatus"></div>
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th class="left" style="width:26px;"></th>
+              <th class="left" data-key="rank">#</th>
+              <th class="left" data-key="ticker">Ticker</th>
+              <th data-key="market_cap_b">Mkt Cap</th>
+              <th data-key="debt_to_equity">D/E</th>
+              <th data-key="fcf_yield">FCF Yld</th>
+              <th data-key="r">R</th>
+              <th data-key="g">G</th>
+              <th data-key="atsv">ATSV</th>
+              <th data-key="final_score">Final</th>
+              <th data-key="quality_overlay">Quality</th>
+              <th data-key="combined_score">Combined</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p><b>About this data:</b> the 30 companies below use approximate, illustrative fundamentals (market cap, debt, cash flow) meant to demonstrate how the formulas and filters behave — not real-time quotes. For live figures pulled directly from Yahoo Finance across the full S&amp;P MidCap 400, run the companion <b>stock_screener.py</b> script, which does the actual data fetch (something a browser can't do directly against Yahoo due to CORS/licensing restrictions on client-side redistribution).</p>
+  </footer>
+
+<script>
+// ---------------- sample fundamentals (illustrative, not live) ----------------
+const COMPANIES = [
+  {ticker:"AAON", name:"AAON Inc.", sector:"Industrials", market_cap_b:9.8, beta:1.05, ev_b:10.0, total_debt_b:0.15, total_cash_b:0.10, fcf_b:0.18, revenue_growth:0.14, op_margin:0.20, capex_b:0.12, depr_b:0.05},
+  {ticker:"UFPI", name:"UFP Industries", sector:"Industrials", market_cap_b:7.9, beta:1.35, ev_b:8.1, total_debt_b:0.35, total_cash_b:0.55, fcf_b:0.30, revenue_growth:0.03, op_margin:0.08, capex_b:0.22, depr_b:0.14},
+  {ticker:"MLI", name:"Mueller Industries", sector:"Industrials", market_cap_b:9.5, beta:1.10, ev_b:9.4, total_debt_b:0.05, total_cash_b:0.65, fcf_b:0.32, revenue_growth:0.02, op_margin:0.16, capex_b:0.09, depr_b:0.05},
+  {ticker:"SFM", name:"Sprouts Farmers Market", sector:"Consumer Staples", market_cap_b:9.7, beta:0.85, ev_b:10.0, total_debt_b:0.55, total_cash_b:0.20, fcf_b:0.27, revenue_growth:0.13, op_margin:0.07, capex_b:0.20, depr_b:0.13},
+  {ticker:"CELH", name:"Celsius Holdings", ticker_sub:"", sector:"Consumer Staples", market_cap_b:8.2, beta:1.60, ev_b:8.0, total_debt_b:0.02, total_cash_b:0.75, fcf_b:0.15, revenue_growth:0.10, op_margin:0.12, capex_b:0.02, depr_b:0.01},
+  {ticker:"WING", name:"Wingstop", sector:"Consumer Discretionary", market_cap_b:6.3, beta:1.15, ev_b:6.4, total_debt_b:0.45, total_cash_b:0.10, fcf_b:0.08, revenue_growth:0.18, op_margin:0.25, capex_b:0.03, depr_b:0.02},
+  {ticker:"FIVE", name:"Five Below", sector:"Consumer Discretionary", market_cap_b:6.9, beta:1.30, ev_b:7.1, total_debt_b:0.65, total_cash_b:0.20, fcf_b:0.14, revenue_growth:0.08, op_margin:0.06, capex_b:0.30, depr_b:0.20},
+  {ticker:"OLLI", name:"Ollie's Bargain Outlet", sector:"Consumer Discretionary", market_cap_b:8.0, beta:0.95, ev_b:8.0, total_debt_b:0.00, total_cash_b:0.35, fcf_b:0.13, revenue_growth:0.10, op_margin:0.09, capex_b:0.10, depr_b:0.06},
+  {ticker:"CROX", name:"Crocs Inc.", sector:"Consumer Discretionary", market_cap_b:5.8, beta:1.75, ev_b:8.0, total_debt_b:2.30, total_cash_b:0.20, fcf_b:0.75, revenue_growth:0.03, op_margin:0.24, capex_b:0.06, depr_b:0.04},
+  {ticker:"YETI", name:"YETI Holdings", sector:"Consumer Discretionary", market_cap_b:2.2, beta:1.30, ev_b:2.2, total_debt_b:0.02, total_cash_b:0.20, fcf_b:0.18, revenue_growth:0.02, op_margin:0.14, capex_b:0.03, depr_b:0.02},
+  {ticker:"CHDN", name:"Churchill Downs", sector:"Consumer Discretionary", market_cap_b:8.7, beta:1.20, ev_b:11.5, total_debt_b:2.90, total_cash_b:0.15, fcf_b:0.20, revenue_growth:0.09, op_margin:0.28, capex_b:0.35, depr_b:0.15},
+  {ticker:"TXRH", name:"Texas Roadhouse", sector:"Consumer Discretionary", market_cap_b:10.0, beta:1.05, ev_b:10.1, total_debt_b:0.10, total_cash_b:0.20, fcf_b:0.22, revenue_growth:0.11, op_margin:0.09, capex_b:0.30, depr_b:0.16},
+  {ticker:"DUOL", name:"Duolingo", sector:"Communication Services", market_cap_b:9.9, beta:1.45, ev_b:9.6, total_debt_b:0.00, total_cash_b:0.85, fcf_b:0.16, revenue_growth:0.35, op_margin:0.08, capex_b:0.03, depr_b:0.02},
+  {ticker:"CVLT", name:"CommVault Systems", sector:"Information Technology", market_cap_b:6.5, beta:1.05, ev_b:6.3, total_debt_b:0.00, total_cash_b:0.30, fcf_b:0.10, revenue_growth:0.14, op_margin:0.14, capex_b:0.01, depr_b:0.01},
+  {ticker:"MANH", name:"Manhattan Associates", sector:"Information Technology", market_cap_b:9.5, beta:1.15, ev_b:9.2, total_debt_b:0.00, total_cash_b:0.35, fcf_b:0.15, revenue_growth:0.11, op_margin:0.24, capex_b:0.02, depr_b:0.01},
+  {ticker:"QLYS", name:"Qualys Inc.", sector:"Information Technology", market_cap_b:5.3, beta:0.95, ev_b:5.0, total_debt_b:0.00, total_cash_b:0.40, fcf_b:0.16, revenue_growth:0.10, op_margin:0.30, capex_b:0.02, depr_b:0.01},
+  {ticker:"EXPO", name:"Exponent Inc.", sector:"Industrials", market_cap_b:3.3, beta:0.90, ev_b:3.2, total_debt_b:0.00, total_cash_b:0.20, fcf_b:0.09, revenue_growth:0.04, op_margin:0.22, capex_b:0.01, depr_b:0.01},
+  {ticker:"TREX", name:"Trex Company", sector:"Industrials", market_cap_b:8.0, beta:1.30, ev_b:7.9, total_debt_b:0.00, total_cash_b:0.15, fcf_b:0.18, revenue_growth:0.15, op_margin:0.24, capex_b:0.10, depr_b:0.05},
+  {ticker:"SSD", name:"Simpson Manufacturing", sector:"Industrials", market_cap_b:6.9, beta:1.05, ev_b:6.7, total_debt_b:0.00, total_cash_b:0.25, fcf_b:0.16, revenue_growth:0.02, op_margin:0.18, capex_b:0.08, depr_b:0.05},
+  {ticker:"RGEN", name:"Repligen Corp.", sector:"Health Care", market_cap_b:9.1, beta:1.20, ev_b:8.9, total_debt_b:0.00, total_cash_b:0.30, fcf_b:0.06, revenue_growth:0.07, op_margin:0.09, capex_b:0.06, depr_b:0.04},
+  {ticker:"MEDP", name:"Medpace Holdings", sector:"Health Care", market_cap_b:9.6, beta:1.10, ev_b:9.2, total_debt_b:0.00, total_cash_b:0.55, fcf_b:0.30, revenue_growth:0.10, op_margin:0.20, capex_b:0.03, depr_b:0.02},
+  {ticker:"HALO", name:"Halozyme Therapeutics", sector:"Health Care", market_cap_b:8.6, beta:1.15, ev_b:8.4, total_debt_b:0.50, total_cash_b:0.60, fcf_b:0.42, revenue_growth:0.16, op_margin:0.55, capex_b:0.02, depr_b:0.01},
+  {ticker:"EXEL", name:"Exelixis Inc.", sector:"Health Care", market_cap_b:9.3, beta:1.10, ev_b:8.7, total_debt_b:0.00, total_cash_b:1.60, fcf_b:0.35, revenue_growth:0.08, op_margin:0.28, capex_b:0.02, depr_b:0.01},
+  {ticker:"BURL", name:"Burlington Stores", sector:"Consumer Discretionary", market_cap_b:20.0, beta:1.30, ev_b:21.5, total_debt_b:2.50, total_cash_b:0.30, fcf_b:0.45, revenue_growth:0.10, op_margin:0.06, capex_b:0.40, depr_b:0.25},
+  {ticker:"RH", name:"RH", sector:"Consumer Discretionary", market_cap_b:4.4, beta:2.30, ev_b:8.5, total_debt_b:4.20, total_cash_b:0.10, fcf_b:0.20, revenue_growth:0.09, op_margin:0.14, capex_b:0.20, depr_b:0.09},
+  {ticker:"WSO", name:"Watsco Inc.", sector:"Industrials", market_cap_b:16.0, beta:1.05, ev_b:16.3, total_debt_b:0.35, total_cash_b:0.10, fcf_b:0.35, revenue_growth:0.03, op_margin:0.10, capex_b:0.05, depr_b:0.03},
+  {ticker:"LECO", name:"Lincoln Electric", sector:"Industrials", market_cap_b:9.0, beta:1.10, ev_b:9.4, total_debt_b:0.55, total_cash_b:0.15, fcf_b:0.22, revenue_growth:0.02, op_margin:0.16, capex_b:0.07, depr_b:0.04},
+  {ticker:"GGG", name:"Graco Inc.", sector:"Industrials", market_cap_b:9.9, beta:1.10, ev_b:9.9, total_debt_b:0.05, total_cash_b:0.20, fcf_b:0.28, revenue_growth:0.04, op_margin:0.24, capex_b:0.04, depr_b:0.02},
+  {ticker:"NBIX", name:"Neurocrine Biosciences", sector:"Health Care", market_cap_b:9.7, beta:0.95, ev_b:9.0, total_debt_b:0.00, total_cash_b:1.20, fcf_b:0.30, revenue_growth:0.20, op_margin:0.22, capex_b:0.02, depr_b:0.01},
+  {ticker:"IBOC", name:"Intl Bancshares Corp", sector:"Financials", market_cap_b:5.4, beta:0.80, ev_b:5.4, total_debt_b:0.10, total_cash_b:0.90, fcf_b:0.24, revenue_growth:0.03, op_margin:0.45, capex_b:0.02, depr_b:0.02},
+];
+
+const RF_DEFAULT = 0.043, VIX_DEFAULT = 16.0;
+let RF = RF_DEFAULT, VIX = VIX_DEFAULT;
+const ERP = 0.045, G_MACRO = 0.02;
+// ⚠️ CHANGE THIS after deploying app.py to Render/Railway/etc.
+// Replace with your real backend URL, e.g. "https://your-app-name.onrender.com"
+// Keep "http://localhost:5001" if you're still just testing on your own computer.
+const API_BASE = "http://localhost:5001";
+
+let DATASET = COMPANIES;  // starts as the sample set; replaced on successful live fetch
+
+function softplusLeaky(x){ return Math.log1p(Math.exp(x)) + 0.1*Math.log1p(Math.exp(-x)); }
+
+function formula1(beta, ev, m){
+  const vixTerm = (1 - 1/(1+Math.exp(ev/m))) * (beta * VIX/100);
+  const sizeTerm = 0.03 * (1 - Math.exp(-Math.max(0,(m-5)/5)));
+  return RF + beta*ERP + vixTerm + sizeTerm;
+}
+function formula2(g, r, capex, depr, opMargin){
+  const denom = softplusLeaky(opMargin);
+  const reinvest = (capex-depr)/denom;
+  return Math.min(g, r-0.01, Math.max(G_MACRO, reinvest));
+}
+function formula3(f, m, r, g){
+  const yieldTerm = f/m;
+  const shapeTerm = Math.tanh(f)*Math.max(0,g) + 1/(1+Math.exp(-f));
+  const stabilityTerm = 1/Math.sqrt((r-g)**2 + 0.0004);
+  return yieldTerm*shapeTerm*stabilityTerm;
+}
+function median(arr){ const s=[...arr].sort((a,b)=>a-b); const n=s.length; return n%2? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2; }
+function factorScores(atsvArr){
+  const m = median(atsvArr);
+  const mad = median(atsvArr.map(v=>Math.abs(v-m))) || 1e-6;
+  return atsvArr.map(v=>{
+    const z = 0.7*((v-m)/mad); // industry PR omitted at this sample size -> weight folded into z term
+    return Math.max(-3, Math.min(3, z));
+  });
+}
+function formula5(factor, cash, f, opMargin, dAdj, Td=4){
+  const denom = softplusLeaky(opMargin);
+  const liquidity = 1/(1+Math.exp(-(cash/Math.abs(f) * (10/(VIX/100)))));
+  const leverage = 1/(1+Math.exp(2*(f/denom + 0.5)));
+  const debtDecay = Math.exp(-Math.max(0,(dAdj/denom)/Td));
+  return factor*liquidity*leverage*debtDecay;
+}
+function formula6(marketCapB, dte, fcfYield, target, sigma, maxDte, minFcf){
+  const size = Math.exp(-((Math.log(marketCapB)-Math.log(target))**2)/(2*sigma**2));
+  const debt = 1/(1+Math.exp(4*(dte-maxDte)));
+  const fcf = 1/(1+Math.exp(-5*(fcfYield-minFcf)));
+  return {overlay: size*debt*fcf, size, debt, fcf};
+}
+
+// BUGFIX (matches stock_screener.py combine_final_and_quality): a straight
+// final_score * overlay crushes bad companies toward zero instead of leaving
+// them clearly negative, since overlay is always in [0,1]. When final_score
+// is already negative, a poor overlay should make it WORSE, not erase it.
+function combineFinalAndQuality(finalScore, overlay){
+  return finalScore >= 0 ? finalScore*overlay : finalScore*(2-overlay);
+}
+
+let sortKey = "combined_score", sortDesc = true; // true = highest value on top (best first)
+
+let lastScoredRows = [];  // full scored+sorted set, before search/tracked filtering
+let trackedTickers = new Set();
+let searchQuery = "";
+let showTrackedOnly = false;
+
+function compute(){
+  const target = parseFloat(document.getElementById("capSlider").value);
+  const maxDte = parseFloat(document.getElementById("dteSlider").value);
+  const minFcf = parseFloat(document.getElementById("fcfSlider").value)/100;
+
+  document.getElementById("capVal").textContent = "$" + target.toFixed(1) + "B";
+  document.getElementById("dteVal").textContent = maxDte.toFixed(2);
+  document.getElementById("fcfVal").textContent = (minFcf*100).toFixed(1) + "%";
+
+  const rows = DATASET.map(c=>{
+    if(c._live){
+      // Backend already computed R/G/ATSV/Final Score using real fetched macro data --
+      // reuse those as-is, only Formula 6 + combined_score need recomputing per-slider.
+      return {...c, dte: c.debt_to_equity, fcfYield: c.fcf_yield};
+    }
+    const r = formula1(c.beta, c.ev_b, c.market_cap_b);
+    const g = formula2(c.revenue_growth, r, c.capex_b, c.depr_b, c.op_margin);
+    const atsv = formula3(c.fcf_b, c.market_cap_b, r, g);
+    const netDebt = Math.max(0, c.total_debt_b - c.total_cash_b);
+    const dte = c.total_debt_b>0 ? c.total_debt_b/Math.max(0.1, c.market_cap_b*0.4) : 0; // rough proxy equity base
+    const fcfYield = c.fcf_b/c.market_cap_b;
+    return {...c, r, g, atsv, netDebt, dte, fcfYield};
+  });
+
+  // Sample rows need factor_score/final_score derived locally; live rows already have them.
+  const needsFactor = rows.filter(r => !r._live);
+  if(needsFactor.length){
+    const factors = factorScores(needsFactor.map(r=>r.atsv));
+    needsFactor.forEach((row,i)=>{ row.factor_score = factors[i]; });
+    needsFactor.forEach(row=>{
+      row.final_score = formula5(row.factor_score, row.total_cash_b, row.fcf_b, row.op_margin, row.netDebt);
+    });
+  }
+
+  rows.forEach(row=>{
+    const q = formula6(row.market_cap_b, row.dte, row.fcfYield, target, 0.8, maxDte, minFcf);
+    row.quality_overlay = q.overlay;
+    row.combined_score = combineFinalAndQuality(row.final_score, q.overlay);
+  });
+
+  rows.sort((a,b)=> sortDesc ? (b[sortKey]??0)-(a[sortKey]??0) : (a[sortKey]??0)-(b[sortKey]??0));
+  rows.forEach((row,i)=>{ row.rank = i+1; });  // true rank, fixed regardless of later filtering
+  lastScoredRows = rows;
+  applyFiltersAndRender();
+}
+
+function applyFiltersAndRender(){
+  let filtered = lastScoredRows;
+  if(showTrackedOnly){
+    filtered = filtered.filter(r => trackedTickers.has(r.ticker));
+  }
+  if(searchQuery){
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter(r =>
+      r.ticker.toLowerCase().includes(q) || (r.name||"").toLowerCase().includes(q)
+    );
+  }
+  render(filtered);
+}
+
+function render(rows){
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+
+  if(!rows.length){
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:24px;">No matches.</td></tr>`;
+    document.getElementById("resultCount").textContent = "0 shown";
+    return;
+  }
+
+  const maxCombined = Math.max(...rows.map(r=>Math.abs(r.combined_score)), 0.001);
+
+  rows.forEach(row=>{
+    const tr = document.createElement("tr");
+    const isTracked = trackedTickers.has(row.ticker);
+    if(isTracked) tr.classList.add("tracked-row");
+    const barPct = Math.max(2, Math.min(100, (Math.abs(row.combined_score)/maxCombined)*100));
+    tr.innerHTML = `
+      <td class="left star-cell"><button class="star-btn ${isTracked?'starred':''}" data-ticker="${row.ticker}" title="${isTracked?'Untrack':'Track this company'}">${isTracked?'★':'☆'}</button></td>
+      <td class="left rank">${row.rank}</td>
+      <td class="left"><span class="tk">${row.ticker}</span><span class="nm">${row.name}</span></td>
+      <td>$${row.market_cap_b.toFixed(1)}B</td>
+      <td>${row.dte.toFixed(2)}</td>
+      <td>${(row.fcfYield*100).toFixed(1)}%</td>
+      <td>${(row.r*100).toFixed(1)}%</td>
+      <td>${(row.g*100).toFixed(1)}%</td>
+      <td>${row.atsv.toFixed(2)}</td>
+      <td class="${row.final_score>=0?'pos':'neg'}">${row.final_score.toFixed(3)}</td>
+      <td>${row.quality_overlay.toFixed(2)}</td>
+      <td>
+        <div class="bar-cell">
+          <span class="${row.combined_score>=0?'pos':'neg'}">${row.combined_score.toFixed(3)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width:${barPct}%"></div></div>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll(".star-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tk = btn.getAttribute("data-ticker");
+      if(trackedTickers.has(tk)) trackedTickers.delete(tk); else trackedTickers.add(tk);
+      document.getElementById("trackedCount").textContent = trackedTickers.size;
+      applyFiltersAndRender();
+    });
+  });
+
+  document.getElementById("resultCount").textContent = rows.length + " shown";
+}
+
+document.querySelectorAll("th[data-key]").forEach(th=>{
+  th.addEventListener("click", ()=>{
+    const key = th.getAttribute("data-key");
+    if(key==="rank") return;
+    if(sortKey===key){ sortDesc = !sortDesc; } else { sortKey=key; sortDesc=true; }
+    document.querySelectorAll("th").forEach(h=>h.classList.remove("active-sort"));
+    th.classList.add("active-sort");
+    compute();
+  });
+});
+
+document.getElementById("capSlider").addEventListener("input", compute);
+document.getElementById("dteSlider").addEventListener("input", compute);
+document.getElementById("fcfSlider").addEventListener("input", compute);
+
+document.getElementById("searchBox").addEventListener("input", (e)=>{
+  searchQuery = e.target.value.trim();
+  applyFiltersAndRender();
+});
+
+document.getElementById("searchBox").addEventListener("keydown", async (e)=>{
+  if(e.key !== "Enter") return;
+  const q = searchQuery.trim().toUpperCase();
+  if(!q) return;
+  const exists = DATASET.some(c => c.ticker.toUpperCase() === q);
+  if(exists){
+    document.getElementById("searchStatus").textContent = "";
+    document.getElementById("searchStatus").className = "search-status";
+    return;
+  }
+  await lookupAndAddTicker(q);
+});
+
+document.getElementById("trackedToggle").addEventListener("click", ()=>{
+  showTrackedOnly = !showTrackedOnly;
+  document.getElementById("trackedToggle").classList.toggle("active", showTrackedOnly);
+  applyFiltersAndRender();
+});
+
+async function lookupAndAddTicker(ticker){
+  const statusEl = document.getElementById("searchStatus");
+  statusEl.textContent = `Not in the current list — looking up ${ticker} from Yahoo Finance…`;
+  statusEl.className = "search-status loading";
+  try{
+    const res = await fetch(`${API_BASE}/api/screen?tickers=${encodeURIComponent(ticker)}`);
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    if(!json.rows || !json.rows.length) throw new Error("No data returned");
+    const r = json.rows[0];
+
+    const mapped = {
+      _live: true,
+      ticker: r.ticker,
+      name: r.industry || r.sector || r.ticker,
+      sector: r.sector || "",
+      market_cap_b: r.market_cap_b,
+      beta: r.beta,
+      ev_b: r.enterprise_value_b,
+      total_debt_b: r.total_debt_b,
+      total_cash_b: r.total_cash_b,
+      fcf_b: r.fcf_b,
+      revenue_growth: r.revenue_growth,
+      op_margin: r.op_margin,
+      capex_b: r.capex_b,
+      depr_b: r.depr_b,
+      debt_to_equity: r.debt_to_equity,
+      fcf_yield: r.fcf_yield,
+      r: r.r,
+      g: r.g,
+      atsv: r.atsv,
+      final_score: r.final_score,
+    };
+
+    DATASET = DATASET.filter(c => c.ticker !== mapped.ticker);
+    DATASET.push(mapped);
+    trackedTickers.add(mapped.ticker);
+    document.getElementById("trackedCount").textContent = trackedTickers.size;
+
+    statusEl.textContent = `Added ${ticker} and started tracking it.`;
+    statusEl.className = "search-status success";
+    document.getElementById("searchBox").value = "";
+    searchQuery = "";
+    refreshChrome();
+    compute();
+  }catch(err){
+    statusEl.textContent = `Couldn't look up "${ticker}" — make sure the backend (app.py) is running, and double-check the ticker symbol.`;
+    statusEl.className = "search-status error";
+    console.error(err);
+  }
+}
+
+document.querySelectorAll(".preset-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".preset-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const presets = {
+      strict:   {dte:0.5, fcf:5.0},
+      moderate: {dte:0.8, fcf:2.5},
+      lenient:  {dte:1.3, fcf:0.5},
+    };
+    const p = presets[btn.getAttribute("data-preset")];
+    document.getElementById("dteSlider").value = p.dte;
+    document.getElementById("fcfSlider").value = p.fcf;
+    compute();
+  });
+});
+
+function setStatus(state, label){
+  const dot = document.getElementById("dsDot");
+  const lbl = document.getElementById("dsLabel");
+  dot.className = "ds-dot ds-" + state;
+  lbl.textContent = label;
+}
+
+function refreshChrome(){
+  // ticker tape + macro chips reflect whichever dataset is active
+  const tapeEl = document.getElementById("tape");
+  const items = DATASET.map(c=>{
+    const delta = (c.revenue_growth*100 - 5).toFixed(1);
+    const cls = delta>=0 ? "up" : "down";
+    const sign = delta>=0 ? "+" : "";
+    return `<span><b>${c.ticker}</b> $${c.market_cap_b.toFixed(1)}B <span class="${cls}">${sign}${delta}%</span></span>`;
+  }).join("");
+  tapeEl.innerHTML = items + items;
+  document.getElementById("uniCount").textContent = DATASET.length;
+}
+
+async function loadLiveData(){
+  const btn = document.getElementById("loadLiveBtn");
+  btn.disabled = true;
+  setStatus("loading", "Connecting…");
+  try{
+    let res;
+    try{
+      res = await fetch(`${API_BASE}/api/screen`);
+    }catch(networkErr){
+      setStatus("error", "Backend not reachable — is app.py running? Using sample data.");
+      return;
+    }
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    if(!json.rows || !json.rows.length){
+      setStatus("error", "Backend reachable, but Yahoo returned no data (likely rate-limited) — wait a few minutes and try again.");
+      return;
+    }
+
+    DATASET = json.rows.map(r => ({
+      _live: true,
+      ticker: r.ticker,
+      name: r.industry || r.sector || r.ticker,
+      sector: r.sector || "",
+      market_cap_b: r.market_cap_b,
+      beta: r.beta,
+      ev_b: r.enterprise_value_b,
+      total_debt_b: r.total_debt_b,
+      total_cash_b: r.total_cash_b,
+      fcf_b: r.fcf_b,
+      revenue_growth: r.revenue_growth,
+      op_margin: r.op_margin,
+      capex_b: r.capex_b,
+      depr_b: r.depr_b,
+      debt_to_equity: r.debt_to_equity,
+      fcf_yield: r.fcf_yield,
+      r: r.r,
+      g: r.g,
+      atsv: r.atsv,
+      final_score: r.final_score,
+    }));
+
+    setStatus("live", `Live — ${DATASET.length} tickers from Yahoo Finance`);
+    refreshChrome();
+    compute();
+  }catch(err){
+    setStatus("error", "Something went wrong — check the app.py terminal window for details.");
+    console.error(err);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("loadLiveBtn").addEventListener("click", loadLiveData);
+
+// ticker tape content (initial, sample data)
+refreshChrome();
+compute();
+</script>
+</body>
+</html>
